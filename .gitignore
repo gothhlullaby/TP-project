@@ -30,3 +30,7 @@ htmlcov/
 
 # Node.js
 node_modules/
+# Database
+*.db
+*.sqlite
+*.sqlite3

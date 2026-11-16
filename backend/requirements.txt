@@ -1,2 +1,9 @@
+
 fastapi
 uvicorn[standard]
+sqlalchemy
+email-validator
+pwdlib[argon2]
+PyJWT
+pytest
+httpx
