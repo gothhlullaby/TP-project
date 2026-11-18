@@ -44,3 +44,28 @@ p {
     background: #22c55e;
     border-radius: 50%;
 }
+
+.preview-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    margin-top: 24px;
+    padding: 0 24px;
+    background: #2a2a2a;
+    border-radius: 20px;
+    color: #fbfaee;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.preview-link:hover {
+    background: #1e1e1e;
+}
+
+.preview-link:focus-visible {
+    outline: 2px solid #2a2a2a;
+    outline-offset: 3px;
+}
