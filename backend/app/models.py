@@ -1,5 +1,15 @@
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    String
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -86,4 +96,113 @@ class Alarm(Base):
         default=True,
         nullable=False
     )
+class TaskChallenge(Base):
+    __tablename__ = "task_challenges"
 
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    alarm_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("alarms.id"),
+        nullable=False,
+        index=True
+    )
+
+    task_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False
+    )
+
+    level: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    question: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False
+    )
+
+    expected_answer: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False
+    )
+
+    is_completed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+class TaskResult(Base):
+    __tablename__ = "task_results"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    alarm_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("alarms.id"),
+        nullable=False,
+        index=True
+    )
+
+    challenge_id: Mapped[int] = mapped_column(
+    Integer,
+    ForeignKey("task_challenges.id"),
+    nullable=False,
+    index=True
+    )
+
+    task_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False
+    )
+
+    level: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False
+    )
+
+    is_correct: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False
+    )
+
+    response_time_seconds: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )

@@ -1,5 +1,5 @@
 from typing import Literal
-
+from datetime import datetime
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -84,3 +84,69 @@ class AlarmResponse(AlarmBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+# Схема выдаваемого задания
+class TaskChallengeResponse(BaseModel):
+    id: int
+    task_type: Literal["math", "phrase"]
+    level: Literal["лёгкая", "средняя", "сложная"]
+    question: str
+    created_at: datetime
+
+
+# Схема отправки математического ответа
+class MathAnswer(BaseModel):
+    challenge_id: int
+    answer: str = Field(min_length=1, max_length=255)
+    response_time_seconds: float | None = Field(
+        default=None,
+        ge=0
+    )
+
+
+# Схема отправки фразы
+class PhraseAnswer(BaseModel):
+    challenge_id: int
+    answer: str = Field(min_length=1, max_length=255)
+    response_time_seconds: float | None = Field(
+        default=None,
+        ge=0
+    )
+
+
+# Схема результата проверки задания
+class TaskCheckResponse(BaseModel):
+    challenge_id: int
+    result_id: int
+    is_correct: bool
+    message: str
+
+
+# Схема сохранённого результата
+class TaskResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    alarm_id: int
+    challenge_id: int
+    task_type: str
+    level: str
+    is_correct: bool
+    response_time_seconds: float | None
+    created_at: datetime
+
+
+# Схема общей статистики
+class StatisticsResponse(BaseModel):
+    total_tasks: int
+    correct_tasks: int
+    incorrect_tasks: int
+    accuracy_percent: float
+    average_response_time_seconds: float | None
+
+
+# Схема истории выполнения заданий
+class StatisticsHistoryResponse(BaseModel):
+    results: list[TaskResultResponse]
+    total: int
