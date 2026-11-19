@@ -6,7 +6,13 @@ import {
     logout
 } from "./modules/auth.js";
 
-import { apiRequest } from "./modules/api.js";
+import { alarmsApi } from "./modules/api.js";
+
+import {
+    createDefaultAlarm,
+    readAlarmForm,
+    renderAlarmForm
+} from "./modules/alarm-form.js";
 
 /* APP STATE */
 
@@ -25,7 +31,14 @@ const state = {
     notificationPermission:
         "Notification" in window
             ? Notification.permission
-            : "unsupported"
+            : "unsupported",
+    editingId: null,
+    draft: null,
+    formError: "",
+    fieldErrors: {},
+    saving: false,
+    busyId: null,
+    deleteTarget: null
 };
 
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -598,7 +611,10 @@ function renderNavigation() {
             ${links.map((link) => `
                 <button
                     class="nav-link ${
-                        state.screen === link.page ? "active" : ""
+                        state.screen === link.page ||
+                        (link.page === "alarms" && state.screen === "editor")
+                            ? "active"
+                            : ""
                     }"
                     type="button"
                     data-page="${link.page}"
@@ -616,7 +632,9 @@ function renderMobileNavigation() {
         <nav class="mobile-nav">
             <button
                 class="nav-link ${
-                    state.screen === "alarms" ? "active" : ""
+                    state.screen === "alarms" || state.screen === "editor"
+                        ? "active"
+                        : ""
                 }"
                 type="button"
                 data-page="alarms"
@@ -737,9 +755,10 @@ function renderAppShell(content) {
 
 function renderAlarmCard(alarm) {
     const enabled = Boolean(alarm.enabled);
+    const busy = state.busyId === alarm.id;
 
     return `
-        <article class="alarm-card">
+        <article class="alarm-card ${enabled ? "" : "is-disabled"}">
 
             <div class="alarm-card-top">
                 <div class="alarm-time">
@@ -788,6 +807,49 @@ function renderAlarmCard(alarm) {
                 </div>
 
             </div>
+
+            <div class="alarm-card-actions">
+                <button
+                    class="switch ${enabled ? "is-on" : ""}"
+                    type="button"
+                    data-action="toggle-alarm"
+                    data-id="${alarm.id}"
+                    aria-label="${enabled ? "Выключить" : "Включить"} будильник"
+                    aria-pressed="${enabled}"
+                    ${busy ? "disabled" : ""}
+                >
+                    <span class="switch-track" aria-hidden="true">
+                        <span class="switch-thumb"></span>
+                    </span>
+                    <span class="switch-label">
+                        ${busy
+                            ? "Сохраняем…"
+                            : (enabled ? "Выключить" : "Включить")}
+                    </span>
+                </button>
+
+                <div class="alarm-card-buttons">
+                    <button
+                        class="button button-secondary button-small"
+                        type="button"
+                        data-action="edit-alarm"
+                        data-id="${alarm.id}"
+                        ${busy ? "disabled" : ""}
+                    >
+                        Изменить
+                    </button>
+
+                    <button
+                        class="button button-danger button-small"
+                        type="button"
+                        data-action="delete-alarm"
+                        data-id="${alarm.id}"
+                        ${busy ? "disabled" : ""}
+                    >
+                        Удалить
+                    </button>
+                </div>
+            </div>
         </article>
     `;
 }
@@ -811,7 +873,7 @@ function renderAlarmsPage() {
                 <p>${escapeHTML(state.alarmsError)}</p>
 
                 <button
-                    class="button"
+                    class="button button-primary"
                     type="button"
                     data-action="reload-alarms"
                 >
@@ -831,9 +893,16 @@ function renderAlarmsPage() {
                 <h2>Пока нет будильников</h2>
 
                 <p>
-                    Здесь будут отображаться будильники,
-                    сохранённые в вашем аккаунте.
+                    Создайте первый будильник — задание поможет проснуться.
                 </p>
+
+                <button
+                    class="button button-primary"
+                    type="button"
+                    data-action="create-alarm"
+                >
+                    Создать будильник
+                </button>
             </section>
         `;
     } else {
@@ -884,6 +953,15 @@ function renderAlarmsPage() {
                             }
                         </p>
                     </div>
+
+                    <button
+                        class="button button-primary"
+                        type="button"
+                        data-action="create-alarm"
+                        ${state.alarmsLoading ? "disabled" : ""}
+                    >
+                        + Создать
+                    </button>
                 </div>
 
                 ${alarmContent}
@@ -953,6 +1031,16 @@ function renderProfilePage() {
                     </span>
                 </div>
 
+                <div class="profile-row">
+                    <span class="profile-label">
+                        Экран задания
+                    </span>
+
+                    <a class="text-button" href="task.html?demo=math">
+                        Открыть демо-задание
+                    </a>
+                </div>
+
                 <div style="padding-top: 22px;">
                     <button
                         class="button button-danger"
@@ -969,15 +1057,95 @@ function renderProfilePage() {
     `;
 }
 
+/* ALARM EDITOR */
+
+function renderAlarmEditorPage() {
+    const alarm = state.editingId === null
+        ? null
+        : state.alarms.find((item) => item.id === state.editingId) || null;
+
+    return renderAlarmForm({
+        alarm,
+        draft: state.draft,
+        error: state.formError,
+        fieldErrors: state.fieldErrors,
+        saving: state.saving
+    });
+}
+
+/* DELETE CONFIRMATION */
+
+function renderDeleteDialog() {
+    if (state.deleteTarget === null) {
+        return "";
+    }
+
+    const alarm = state.alarms.find(
+        (item) => item.id === state.deleteTarget
+    );
+
+    if (!alarm) {
+        return "";
+    }
+
+    return `
+        <div class="modal-backdrop" data-modal-backdrop>
+            <section
+                class="modal-card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-dialog-title"
+                data-dialog="delete"
+            >
+                <span class="eyebrow">Опасное действие</span>
+
+                <h2 id="delete-dialog-title">Удалить будильник?</h2>
+
+                <p>
+                    Будильник на ${escapeHTML(alarm.time)} будет удалён
+                    без возможности восстановления.
+                </p>
+
+                <div class="modal-actions">
+                    <button
+                        class="button button-danger"
+                        type="button"
+                        data-action="confirm-delete"
+                        data-id="${alarm.id}"
+                        ${state.busyId === alarm.id ? "disabled" : ""}
+                    >
+                        ${state.busyId === alarm.id ? "Удаляем…" : "Удалить"}
+                    </button>
+
+                    <button
+                        class="button button-secondary"
+                        type="button"
+                        data-action="cancel-delete"
+                        autofocus
+                        ${state.busyId === alarm.id ? "disabled" : ""}
+                    >
+                        Отмена
+                    </button>
+                </div>
+            </section>
+        </div>
+    `;
+}
+
 /* PAGE RENDERING */
 
 function renderMainPage() {
-    const content =
-        state.screen === "profile"
-            ? renderProfilePage()
-            : renderAlarmsPage();
+    let content;
 
-    renderAppShell(content);
+    if (state.screen === "profile") {
+        content = renderProfilePage();
+    } else if (state.screen === "editor") {
+        content = renderAlarmEditorPage();
+    } else {
+        content = renderAlarmsPage();
+    }
+
+    renderAppShell(`${content}${renderDeleteDialog()}`);
 }
 
 function render() {
@@ -996,6 +1164,7 @@ function render() {
 
         case "alarms":
         case "profile":
+        case "editor":
             renderMainPage();
             break;
 
@@ -1015,9 +1184,7 @@ async function loadAlarms() {
     render();
 
     try {
-        const data = await apiRequest("/alarms", {
-            auth: true
-        });
+        const data = await alarmsApi.getAll();
 
         if (!Array.isArray(data)) {
             throw new Error("Сервер вернул некорректный список будильников.");
@@ -1048,6 +1215,179 @@ async function loadAlarms() {
     }
 
     render();
+}
+
+/* ALARM FORM AND ACTIONS */
+
+function openAlarmEditor(alarm = null) {
+    state.screen = "editor";
+    state.editingId = alarm ? alarm.id : null;
+    state.draft = alarm
+        ? {
+            ...alarm,
+            days: Array.isArray(alarm.days) ? [...alarm.days] : []
+        }
+        : createDefaultAlarm();
+    state.formError = "";
+    state.fieldErrors = {};
+    state.saving = false;
+    state.deleteTarget = null;
+
+    render();
+}
+
+function closeAlarmEditor() {
+    state.screen = "alarms";
+    state.editingId = null;
+    state.draft = null;
+    state.formError = "";
+    state.fieldErrors = {};
+    state.saving = false;
+
+    render();
+}
+
+function openDeleteDialog(id) {
+    state.deleteTarget = id;
+    render();
+}
+
+function closeDeleteDialog() {
+    state.deleteTarget = null;
+    render();
+}
+
+async function saveAlarm(form) {
+    if (state.saving) {
+        return;
+    }
+
+    const data = readAlarmForm(form);
+
+    state.draft = data;
+    state.fieldErrors = {};
+
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.time)) {
+        state.formError = "";
+        state.fieldErrors = {
+            time: "Укажите время в формате ЧЧ:ММ."
+        };
+        render();
+        return;
+    }
+
+    if (!Number.isInteger(data.volume) || data.volume < 0 || data.volume > 100) {
+        state.formError = "";
+        state.fieldErrors = {
+            volume: "Громкость должна быть от 0 до 100%."
+        };
+        render();
+        return;
+    }
+
+    state.saving = true;
+    state.formError = "";
+    state.fieldErrors = {};
+    render();
+
+    try {
+        if (state.editingId === null) {
+            await alarmsApi.create(data);
+        } else {
+            await alarmsApi.update(state.editingId, data);
+        }
+
+        state.saving = false;
+        state.screen = "alarms";
+        state.editingId = null;
+        state.draft = null;
+        state.formError = "";
+        state.fieldErrors = {};
+
+        await loadAlarms();
+    } catch (error) {
+        state.saving = false;
+
+        if (error.status === 401) {
+            handleLogout();
+            showMessage("Сессия завершена. Войдите в аккаунт ещё раз.");
+            render();
+            return;
+        }
+
+        state.formError =
+            error.message || "Не удалось сохранить будильник.";
+        render();
+    }
+}
+
+async function toggleAlarm(id) {
+    if (state.busyId !== null) {
+        return;
+    }
+
+    state.busyId = id;
+    state.alarmsError = "";
+    render();
+
+    try {
+        const updated = await alarmsApi.toggle(id);
+
+        state.alarms = state.alarms.map((alarm) =>
+            alarm.id === id ? updated : alarm
+        );
+    } catch (error) {
+        if (error.status === 401) {
+            handleLogout();
+            showMessage("Сессия завершена. Войдите в аккаунт ещё раз.");
+            render();
+            return;
+        }
+
+        state.alarmsError =
+            error.message || "Не удалось переключить будильник.";
+    } finally {
+        state.busyId = null;
+        render();
+    }
+}
+
+async function deleteAlarm(id) {
+    if (state.busyId !== null) {
+        return;
+    }
+
+    state.busyId = id;
+    state.alarmsError = "";
+    render();
+
+    try {
+        await alarmsApi.remove(id);
+
+        state.alarms = state.alarms.filter((alarm) => alarm.id !== id);
+        state.deleteTarget = null;
+
+        if (state.editingId === id) {
+            state.screen = "alarms";
+            state.editingId = null;
+            state.draft = null;
+            state.formError = "";
+        }
+    } catch (error) {
+        if (error.status === 401) {
+            handleLogout();
+            showMessage("Сессия завершена. Войдите в аккаунт ещё раз.");
+            render();
+            return;
+        }
+
+        state.alarmsError =
+            error.message || "Не удалось удалить будильник.";
+        state.deleteTarget = null;
+    } finally {
+        state.busyId = null;
+        render();
+    }
 }
 
 /* APPLICATION FLOW */
@@ -1087,6 +1427,13 @@ function handleLogout() {
     state.authMessage = "";
     state.authMode = "login";
     state.screen = "login";
+    state.editingId = null;
+    state.draft = null;
+    state.formError = "";
+    state.fieldErrors = {};
+    state.saving = false;
+    state.busyId = null;
+    state.deleteTarget = null;
 
     render();
 }
@@ -1094,6 +1441,11 @@ function handleLogout() {
 /* CLICK HANDLER */
 
 app.addEventListener("click", async (event) => {
+    if (event.target.matches("[data-modal-backdrop]")) {
+        closeDeleteDialog();
+        return;
+    }
+
     const actionElement = event.target.closest("[data-action]");
     const pageElement = event.target.closest("[data-page]");
 
@@ -1102,6 +1454,11 @@ app.addEventListener("click", async (event) => {
 
         if (page === "alarms" || page === "profile") {
             state.screen = page;
+            state.editingId = null;
+            state.draft = null;
+            state.formError = "";
+            state.saving = false;
+            state.deleteTarget = null;
 
             if (page === "alarms") {
                 await loadAlarms();
@@ -1161,6 +1518,63 @@ app.addEventListener("click", async (event) => {
             await loadAlarms();
             break;
 
+        case "create-alarm":
+            openAlarmEditor();
+            break;
+
+        case "close-editor":
+            closeAlarmEditor();
+            break;
+
+        case "edit-alarm": {
+            const alarm = state.alarms.find(
+                (item) => item.id === Number(actionElement.dataset.id)
+            );
+
+            if (alarm) {
+                openAlarmEditor(alarm);
+            }
+            break;
+        }
+
+        case "delete-alarm":
+            openDeleteDialog(Number(actionElement.dataset.id));
+            break;
+
+        case "cancel-delete":
+            closeDeleteDialog();
+            break;
+
+        case "confirm-delete":
+            await deleteAlarm(Number(actionElement.dataset.id));
+            break;
+
+        case "toggle-alarm":
+            await toggleAlarm(Number(actionElement.dataset.id));
+            break;
+
+        case "toggle-day": {
+            const selected = actionElement.classList.toggle("is-selected");
+            actionElement.setAttribute("aria-pressed", String(selected));
+
+            if (state.draft) {
+                const day = Number(actionElement.dataset.day);
+                const days = new Set(state.draft.days || []);
+
+                if (selected) {
+                    days.add(day);
+                } else {
+                    days.delete(day);
+                }
+
+                state.draft = {
+                    ...state.draft,
+                    days: Array.from(days).sort((a, b) => a - b)
+                };
+            }
+            break;
+        }
+
         case "logout":
             handleLogout();
             break;
@@ -1170,11 +1584,39 @@ app.addEventListener("click", async (event) => {
 /* FORM HANDLER */
 
 app.addEventListener("submit", async (event) => {
+    if (event.target.id === "alarm-form") {
+        event.preventDefault();
+        await saveAlarm(event.target);
+        return;
+    }
+
     if (event.target.id !== "auth-form") return;
 
     event.preventDefault();
 
     await handleAuthSubmit(event.target);
+});
+
+/* INPUT HANDLER */
+
+app.addEventListener("input", (event) => {
+    if (event.target.id !== "alarm-volume") return;
+
+    const output = event.target
+        .closest(".alarm-form")
+        ?.querySelector("[data-volume-value]");
+
+    if (output) {
+        output.textContent = event.target.value;
+    }
+});
+
+/* KEYBOARD HANDLER */
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.deleteTarget !== null) {
+        closeDeleteDialog();
+    }
 });
 
 /* APP INITIALIZATION */
