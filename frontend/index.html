@@ -1,26 +1,26 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#F4F2DD">
+
     <title>Smart Alarm</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="container">
-      <h1>Smart Alarm</h1>
-      <p>Управляйте своим временем с умными будильниками.</p>
 
-      <div class="status">
-        <span class="status-indicator"></span>
-        Проект успешно запущен
-      </div>
+    <link rel="icon" type="image/png" href="assets/clock.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
 
-      <a class="preview-link" href="task.html?demo=math">
-        Открыть экран задания
-      </a>
-    </main>
+<body>
+    <div id="app">
+        <div class="app-loading">
+            <img src="assets/clock.png" alt="" class="loading-icon">
+            <p>Smart Alarm</p>
+            <span>Загружаем приложение...</span>
+        </div>
+    </div>
 
-    <script src="app.js"></script>
-  </body>
+    <script type="module" src="app.js"></script>
+</body>
 </html>
